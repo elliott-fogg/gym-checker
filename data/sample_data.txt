@@ -1,0 +1,34 @@
+{
+    "ScannedCount": 1676,
+    "ResponseMetadata": {
+        "HTTPStatusCode": 200,
+        "RequestId": "HHA9QLOPVRFMMT7BGA9D89T9LFVV4KQNSO5AEMVJF66Q9ASUAAJG",
+        "HTTPHeaders": {
+            "x-amzn-requestid": "HHA9QLOPVRFMMT7BGA9D89T9LFVV4KQNSO5AEMVJF66Q9ASUAAJG",
+            "content-type": "application/x-amz-json-1.0",
+            "connection": "keep-alive",
+            "content-length": "269",
+            "date": "Fri, 07 Dec 2018 11:26:39 GMT",
+            "x-amz-crc32": "103076131",
+            "server": "Server"
+        },
+        "RetryAttempts": 0
+    },
+    "Count": 2,
+    "Items": [
+        {
+            "date": "2018-12-07",
+            "time": "10:30",
+            "ID": 1544178641,
+            "day": "Friday",
+            "value": "32%"
+        },
+        {
+            "date": "2018-12-07",
+            "time": "11:00",
+            "ID": 1544180441,
+            "day": "Friday",
+            "value": "26%"
+        }
+    ]
+}
