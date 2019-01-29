@@ -11,7 +11,7 @@ St Andrews Athletic Union Gym over time.
 ### Script Functions:
 
 ##### aws_function.py
-An AWS Lambda script that scrapes the HTML text of my local gym for its current capacity,
+    An AWS Lambda script that scrapes the HTML text of my local gym for its current capacity,
 and uploads that value to an AWS DynamoDB entity. Requires a virtualenv to run,
 as it requires the 'Requests' library to be installed.
 
