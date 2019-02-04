@@ -1,3 +1,6 @@
+# Refactor the Database class to format the local database correctly, so that we
+# can draw data directly from SQL instead of creating a custom Datastruct
+
 import os, sqlite3, re, json, boto3, decimal, shutil
 from boto3.dynamodb.conditions import Key, Attr
 
