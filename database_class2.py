@@ -159,17 +159,6 @@ class databaseObject(object):
                 print("ENTRY:\n{}".format(entry))
                 continue
 
-            param_type_array = []
-            for key in self.param_order:
-                if self.params[key] != get_type(entry[key]):
-                    param_type_array.append( (key,entry[key],get_type(entry[key]),self.params[key]) )
-            if param_type_array != []:
-                print("Entry {} has values of the wrong type:")
-                for p in param_type_array:
-                    print("\t{}={} ('{}', should be '{}')".format(*p))
-                    print(entry)
-                continue
-
             # If we've reached here, entry has passed all checks
             valid_entries.append(self.convert_data(entry))
 
@@ -321,8 +310,8 @@ def update_from_aws_gymchecker(dbObject):
 ## load_gymchecker()
 # Returns the gymchecker object, to play around with in iPython
 def load_gymchecker():
-    dbp = rel_path("data/gymchecker.db")
-    params = (('ID','INTEGER'),('date','TEXT'),('day','TEXT'),('time','TEXT'),('value','TEXT'))
+    dbp = rel_path("data/gymchecker2.db")
+    params = (('id','INTEGER'),('date','INTEGER'),('day','TEXT'),('time','INTEGER'),('value','INTEGER'))
     return databaseObject(dbp, 'gymchecker', params)
 
 ## setup_gymchecker()
