@@ -1,7 +1,7 @@
 # Refactor the Database class to format the local database correctly, so that we
 # can draw data directly from SQL instead of creating a custom Datastruct
 
-import os, sqlite3, re, json, boto3, decimal, shutil
+import os, sqlite3, re, json, boto3, decimal, shutil, datetime
 from boto3.dynamodb.conditions import Key, Attr
 
 ##### Utility Functions / Dictionaries #########################################
@@ -180,6 +180,15 @@ class databaseObject(object):
         return (valid_entry_array,num_valid_entries,num_params)
 
     def convert_data(self,data_json):
+        # Convert the time
+        converted_json = {}
+        converted_json["ID"] = data_json["ID"]
+        converted_json["day"] = data_json["day"]
+        converted_json["time"] = round_time(data_json["time"])
+        converted_json["date"] = int("".join(re.findall("(\d+)",data_json["date"])))
+        converted_json["value"] = int(re.findall("(\d+)",data_json["value"])[0])
+        print(converted_json)
+        return converted_json
 
 
     def insert_data(self, json_data):
@@ -216,9 +225,12 @@ class databaseObject(object):
         r = self.x("SELECT count(*) FROM {}".format(self.table))
         return r[0][0]
 
-    def get_uniques(self,column_name):
+    def get_uniques(self,distinct_columns,sort_columns=None):
+        if sort_columns == None:
+            sort_columns = distinct_columns
         r = self.x("SELECT DISTINCT {} FROM {} ORDER BY {}".format(\
-            column_name, self.table, column_name))
+            distinct_columns, self.table, sort_columns))
+        return r
 
     def locate_files(self):
         c = self.cursor
@@ -301,17 +313,17 @@ def update_from_aws_gymchecker(dbObject):
     # Check the number of entries in the table
     entries = dbObject.count_entries()
     if entries == current_items:
-        print("{} - entries in table and AWS match.".format(entries))
+        print("MATCH - {} entries in local and AWS tables.".format(entries))
         backup(dbObject.file_path)
     else:
-        print("Entries in table and AWS do not match:")
+        print("ERROR - Entries in table and AWS do not match:")
         print("Table: {}; AWS: {}".format(entries,current_items))
 
 ## load_gymchecker()
 # Returns the gymchecker object, to play around with in iPython
 def load_gymchecker():
     dbp = rel_path("data/gymchecker2.db")
-    params = (('id','INTEGER'),('date','INTEGER'),('day','TEXT'),('time','INTEGER'),('value','INTEGER'))
+    params = (('ID','INTEGER'),('date','INTEGER'),('day','TEXT'),('time','INTEGER'),('value','INTEGER'))
     return databaseObject(dbp, 'gymchecker', params)
 
 ## setup_gymchecker()
@@ -335,3 +347,35 @@ def round_time(time_string):
     return hours + mins
 
 ##### Analysis Functions #######################################################
+def date_obj(date_number):
+    d_strings = re.findall("(\d{4})(\d{2})(\d{2})",str(date_number))[0]
+    d_ints = [int(i) for i in d_strings]
+    return datetime.date(*d_ints)
+
+def date_int(date_object):
+    date_string = "".join(re.findall("(\d)",str(date_object)))
+    return int(date_string)
+
+
+# # Update the database
+# setup_gymchecker()
+# Get a list of dates that are in the database
+gc = load_gymchecker()
+dates = gc.get_uniques("date, day","date")
+# Find last Monday
+for i in reversed(dates):
+    if i[1] == "Sunday":
+        last_date = date_obj(i[0])
+        break
+for i in dates:
+    if i[1] == "Monday":
+        first_date = date_obj(i[0])
+        break
+print("Dates ranging from {} to {}".format(first_date,last_date))
+# Get the first week of data
+second_monday = first_date + datetime.timedelta(days=6)
+print(second_monday)
+first_week = gc.x("SELECT * FROM gymchecker WHERE date BETWEEN {} AND {}".format(\
+    date_int(first_date),date_int(second_monday)))
+for i in sorted(first_week,key=lambda x: x[0]):
+    print(i)
