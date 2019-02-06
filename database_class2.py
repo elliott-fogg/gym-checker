@@ -373,9 +373,25 @@ for i in dates:
         break
 print("Dates ranging from {} to {}".format(first_date,last_date))
 # Get the first week of data
-second_monday = first_date + datetime.timedelta(days=6)
-print(second_monday)
-first_week = gc.x("SELECT * FROM gymchecker WHERE date BETWEEN {} AND {}".format(\
-    date_int(first_date),date_int(second_monday)))
-for i in sorted(first_week,key=lambda x: x[0]):
-    print(i)
+last_monday = last_date - datetime.timedelta(days=6)
+print(last_monday)
+last_week = gc.x("SELECT * FROM gymchecker WHERE date BETWEEN {} AND {}".format(\
+    date_int(last_monday),date_int(last_sunday)))
+
+# Bar Chart for each day last week
+import matplotlib.pyplot as plt
+sorted_week = sorted(last_week,key=lambda x: x[0])
+count = 0
+while len(sorted_week) > 0:
+    count += 1
+    day = sorted_week[:48]
+    sorted_week = sorted_week[48:]
+    x_data = []
+    y_data = []
+    for i in day:
+        x_data.append(i[3])
+        y_data.append(i[4])
+    ax = plt.subplot(7,1,count)
+    ax.bar(x_data,y_data)
+    ax.set_title(day[0][2])
+plt.show()
