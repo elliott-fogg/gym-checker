@@ -3,6 +3,8 @@
 
 import os, sqlite3, re, json, boto3, decimal, shutil, datetime
 from boto3.dynamodb.conditions import Key, Attr
+from statistics import mean, median
+import matplotlib.pyplot as plt
 
 ##### Utility Functions / Dictionaries #########################################
 
@@ -356,42 +358,105 @@ def date_int(date_object):
     date_string = "".join(re.findall("(\d)",str(date_object)))
     return int(date_string)
 
+def key_event(e):
+    global current_pos
 
-# # Update the database
-# setup_gymchecker()
-# Get a list of dates that are in the database
+    if e.key == "right":
+        current_pos += 1
+    elif e.key == "left":
+        current_pos -= 1
+    elif e.key == "escape":
+        plt.close()
+        return
+    else:
+        return
+    current_pos = current_pos % len(days)
+    plot_figure(current_pos)
+
+def plot_figure(i):
+    ax.cla()
+    ax.bar(open_times[i],data[i],width=0.4)
+    ax.set_title("{}: Mean={}; Median={}".format(days[i],means[i],medians[i]))
+    ax.set_xlim([6,23.5])
+    ax.set_ylim([0,upper_limit])
+    ax.xaxis.set_ticks(list(range(6,24)))
+    ax.axhline(y=means[i])
+    fig.canvas.draw()
+
+# Update gymchecker
+answer = input("Update gymchecker? (y/n)   ")
+if answer in ("y","Y"):
+    update_gymchecker()
+
+# Get limits of complete dataset
+# Start date is earliest Monday, End date is latest Sunday
 gc = load_gymchecker()
-dates = gc.get_uniques("date, day","date")
-# Find last Monday
-for i in reversed(dates):
-    if i[1] == "Sunday":
-        last_date = date_obj(i[0])
-        break
-for i in dates:
-    if i[1] == "Monday":
-        first_date = date_obj(i[0])
-        break
-print("Dates ranging from {} to {}".format(first_date,last_date))
-# Get the first week of data
-last_monday = last_date - datetime.timedelta(days=6)
-print(last_monday)
-last_week = gc.x("SELECT * FROM gymchecker WHERE date BETWEEN {} AND {}".format(\
-    date_int(last_monday),date_int(last_sunday)))
+dates = gc.get_uniques("date, day", "date")
 
-# Bar Chart for each day last week
-import matplotlib.pyplot as plt
-sorted_week = sorted(last_week,key=lambda x: x[0])
-count = 0
-while len(sorted_week) > 0:
-    count += 1
-    day = sorted_week[:48]
-    sorted_week = sorted_week[48:]
-    x_data = []
-    y_data = []
-    for i in day:
-        x_data.append(i[3])
-        y_data.append(i[4])
-    ax = plt.subplot(7,1,count)
-    ax.bar(x_data,y_data)
-    ax.set_title(day[0][2])
+for d in dates:
+    if d[1] == "Monday":
+        start_date = date_obj(d[0])
+        break
+for d in reversed(dates):
+    if d[1] == "Sunday":
+        end_date = date_obj(d[0])
+        break
+
+print("Data ranges from {} to {}".format(start_date, end_date))
+temp_date = start_date
+i = 0
+while True:
+    print("{}: {}".format(i,temp_date))
+    temp_date += datetime.timedelta(days=7)
+    i += 1
+    if temp_date > end_date:
+        break
+
+# Collate all weekly information within the valid date range
+times = [t/2 for t in range(48)]
+days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+open_hours = [(13,46),(13,46),(13,46),(13,46),(13,46),(16,46),(16,43)]
+open_times = [list(t/2 for t in range(h[0],h[1])) for h in open_hours]
+
+data = []
+max_value = 0
+means = []
+medians = []
+highest = []
+lowest = []
+
+for d in range(len(days)):
+    values = []
+    for t in open_times[d]:
+        for i in (0,1,2,3,-1,-1,-1,-1,-1,-1,-1,-1,12):
+            if i < 0:
+                continue
+            week_start = start_date + datetime.timedelta(days=7*i)
+            week_end = week_start + datetime.timedelta(days=6)
+
+            com1 = "SELECT value FROM gymchecker WHERE date BETWEEN {} AND {} ".format(\
+                date_int(week_start),date_int(week_end))
+            com2 = "AND time={} AND day='{}'".format(t,days[d])
+            results = gc.x(com1 + com2)
+            total = 0
+            for i in results:
+                total += i[0]
+            total /= max(len(results),1)
+        values.append(total)
+    max_value = max(max_value,max(values))
+    data.append(values)
+    means.append(round(mean(values)))
+    medians.append(round(median(values)))
+    highest.append(round(max(values)))
+    lowest.append(round(min(values)))
+upper_limit = 5*(round(max_value/5)+1)
+
+# Plot Figures
+fig = plt.figure()
+fig.canvas.mpl_connect('key_press_event', key_event)
+ax = fig.add_subplot(111)
+current_pos = 0
+plot_figure(current_pos)
 plt.show()
+
+# Add in a GUI to compute different combinations of weeks on the fly
