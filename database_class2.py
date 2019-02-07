@@ -5,6 +5,7 @@ import os, sqlite3, re, json, boto3, decimal, shutil, datetime
 from boto3.dynamodb.conditions import Key, Attr
 from statistics import mean, median
 import matplotlib.pyplot as plt
+from math import floor
 
 ##### Utility Functions / Dictionaries #########################################
 
@@ -386,7 +387,7 @@ def plot_figure(i):
 # Update gymchecker
 answer = input("Update gymchecker? (y/n)   ")
 if answer in ("y","Y"):
-    update_gymchecker()
+    setup_gymchecker()
 
 # Get limits of complete dataset
 # Start date is earliest Monday, End date is latest Sunday
@@ -425,13 +426,19 @@ medians = []
 highest = []
 lowest = []
 
+week_binary = (1,1,1,1,0,0,0,0,0,0,0,0,1)
+week_num = (end_date - start_date).days + 1
+week_diff = list(range(floor(week_num/7)))
+print(week_num)
+print(week_diff)
+
 for d in range(len(days)):
     values = []
     for t in open_times[d]:
-        for i in (0,1,2,3,-1,-1,-1,-1,-1,-1,-1,-1,12):
-            if i < 0:
+        for i in range(len(week_diff)):
+            if week_binary[i] == 0:
                 continue
-            week_start = start_date + datetime.timedelta(days=7*i)
+            week_start = start_date + datetime.timedelta(days=7*week_diff[i])
             week_end = week_start + datetime.timedelta(days=6)
 
             com1 = "SELECT value FROM gymchecker WHERE date BETWEEN {} AND {} ".format(\
