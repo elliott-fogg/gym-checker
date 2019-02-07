@@ -7,6 +7,14 @@ from statistics import mean, median
 import matplotlib.pyplot as plt
 from math import floor
 
+from matplotlib.backends.backend_tkagg import (
+    FigureCanvasTkAgg, NavigationToolbar2Tk)
+# Implement the default Matplotlib key bindings.
+from matplotlib.backend_bases import key_press_handler
+from matplotlib.figure import Figure
+
+import numpy as np
+
 ##### Utility Functions / Dictionaries #########################################
 
 def rel_path(path):
@@ -420,45 +428,65 @@ class graph_plotter(tkinter.Frame):
         key_press_handler(event, canvas, toolbar)
 
     def position(self):
-        frame1 = tkinter.Frame(self)
-        frame2 = tkinter.Frame(self)
-        frame3 = tkinter.Frame(self)
-        frame4 = tkinter.Frame(self)
-        frame1.rowconfigure(1,weight=1)
-        frame4.columnconfigure(1,minsize=50)
+        self.frame1 = tkinter.Frame(self)
+        self.frame2 = tkinter.Frame(self)
+        self.frame3 = tkinter.Frame(self)
+        self.frame4 = tkinter.Frame(self)
+        self.frame1.rowconfigure(1,weight=1)
+        self.frame4.columnconfigure(1,minsize=50)
 
-        fig = Figure(figsize=(5, 4), dpi=100)
+        self.fig = Figure(figsize=(5, 4), dpi=100)
         t = np.arange(0, 3, .01)
-        fig.add_subplot(111).plot(t, 2 * np.sin(2 * np.pi * t))
+        self.fig.add_subplot(111).plot(t, 2 * np.sin(2 * np.pi * t))
 
-        canvas = FigureCanvasTkAgg(fig, master=frame2)  # A tk.DrawingArea.
-        canvas.draw()
-        canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=1,)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame2)  # A tk.DrawingArea.
+        self.canvas.draw()
+        self.canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=1,)
 
-        toolbar = NavigationToolbar2Tk(canvas, frame2)
-        toolbar.update()
-        canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=1)
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self.frame2)
+        self.toolbar.update()
+        self.canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=1)
 
-        canvas.mpl_connect("key_press_event", on_key_press)
+        self.canvas.mpl_connect("key_press_event", self.on_key_press)
 
-        b1 = tkinter.Button(master=frame4, text="<", command=down_day)
-        b1.grid(row=0,column=0)
+        self.b1 = tkinter.Button(master=self.frame4, text="<", command=self.down_day)
+        self.b1.grid(row=0,column=0)
 
-        l2 = tkinter.Label(master=frame4, text="day_goes_here")
-        l2.grid(row=0,column=1)
+        self.l2 = tkinter.Label(master=self.frame4, text="day_goes_here")
+        self.l2.grid(row=0,column=1)
 
-        b3 = tkinter.Button(master=frame4, text=">", command=up_day)
-        b3.grid(row=0,column=2)
+        self.b3 = tkinter.Button(master=self.frame4, text=">", command=self.up_day)
+        self.b3.grid(row=0,column=2)
 
-        button4 = tkinter.Button(master=frame3, text="Recalculate", command=_quit)
-        button4.pack()
+        self.button4 = tkinter.Button(master=self.frame3, text="Recalculate", command=self._quit)
+        self.button4.pack()
 
-        label = tkinter.Label(master=frame1,text="Selected Weeks:")
-        label.grid(row=0, sticky=tkinter.W)
+        self.label = tkinter.Label(master=self.frame1,text="Selected Weeks:")
+        self.label.grid(row=0, sticky=tkinter.W)
 
-        lb2 = tkinter.Listbox(master=frame1,selectmode="SINGLE")
-        lb2.bind('<<ListboxSelect>>',week_select)
-        lb2.grid(row=1, sticky=tkinter.N+tkinter.W+tkinter.S+tkinter.E)
+        self.lb2 = tkinter.Listbox(master=self.frame1,selectmode="SINGLE")
+        self.lb2.bind('<<ListboxSelect>>',self.week_select)
+        self.lb2.grid(row=1, sticky=tkinter.N+tkinter.W+tkinter.S+tkinter.E)
+
+        self.grid()
+
+    def position_test(self):
+        self.f1 = tkinter.Frame(self)
+        self.f2 = tkinter.Frame(self)
+        self.f2.rowconfigure(0, weight=1) # <-- row 0 will be resized
+
+        self.f1.grid(row=0, column=0)
+        self.f2.grid(row=0, column=1, sticky=(tkinter.N, tkinter.S, tkinter.E, tkinter.W))
+
+        ### Fill left frame with dummy elements to demonstrate the problem
+        for i in range(15):
+            tkinter.Label(self.f1, text="Label{}".format(i)).grid(row=i)
+
+        ### Put listbox on right frame
+        self.lbox = tkinter.Listbox(self.f2)
+        self.lbox.grid(row=0, column=0, sticky=(tkinter.N, tkinter.S, tkinter.E, tkinter.W))
+
+        self.grid()
 
     def key_event(e):
         global current_pos
@@ -541,6 +569,7 @@ class graph_plotter(tkinter.Frame):
     def __init__(self, master, *args, **kwargs):
         tkinter.Frame.__init__(self, master)
 
+        self.position_test()
         # rewrite_weeks(lb2)
         # set_day(0)
 
