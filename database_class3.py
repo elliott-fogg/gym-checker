@@ -1,7 +1,4 @@
-# TODO: Add a waitscreen popup when the database is recalculating, or some other
-#       form of visual indication
-
-import os, sqlite3, re, json, boto3, decimal, shutil, datetime
+import os, sqlite3, re, json, boto3, decimal, shutil, datetime, sys
 from boto3.dynamodb.conditions import Key, Attr
 from statistics import mean, median
 import matplotlib.pyplot as plt
@@ -333,9 +330,9 @@ def load_gymchecker():
     params = (('ID','INTEGER'),('date','INTEGER'),('day','TEXT'),('time','INTEGER'),('value','INTEGER'))
     return databaseObject(dbp, 'gymchecker', params)
 
-## setup_gymchecker()
+## update_gymchecker()
 # Creates the gymchecker table if missing, and updates it
-def setup_gymchecker():
+def update_gymchecker():
     gc = load_gymchecker()
     update_from_aws_gymchecker(gc)
 
@@ -394,7 +391,7 @@ class graph_plotter(tk.Frame):
     ##### Button Functions #####################################################
 
     def check_escape(self, event):
-        if event.key == "escape":
+        if event.keysym == "Escape":
             self.master.quit()
             self.master.destroy()
 
@@ -539,7 +536,8 @@ class graph_plotter(tk.Frame):
         i = self.day_index
         self.ax.cla()
         self.bar_container = self.ax.bar(self.open_times[i],self.data[i],width=0.4)
-        self.ax.set_title(self.day_names[i])
+        self.ax.set_title("{} - Mean={}%".format(self.day_names[i], \
+            round(mean(self.data[i]),1)))
         self.ax.set_xlim([6,23.5])
         max_value = 5*(round(arraymax(self.data)/5)+1)
         self.ax.set_ylim([0,max_value])
@@ -624,21 +622,19 @@ class graph_plotter(tk.Frame):
     def __init__(self, master, gc):
         self.gc = gc
         tk.Frame.__init__(self, master)
+        master.bind("<KeyPress>", self.check_escape)
         self.get_week_starts()
         self.calculate_data()
         self.position()
         self.set_day(0)
 
-        print("Class working so far")
-
 
 ##### main function ############################################################
 
 def main():
-    # # Update gymchecker
-    # answer = input("update gymchecker? (y/n)   ")
-    # if answer in ("y","Y"):
-    #     setup_gymchecker()
+    if (any(x in ("--update","-u") for x in sys.argv)):
+            # Update gymchecker
+            update_gymchecker()
 
     gc = load_gymchecker()
 
