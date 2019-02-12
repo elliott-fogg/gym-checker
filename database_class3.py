@@ -1,11 +1,10 @@
-# Refactor the Database class to format the local database correctly, so that we
-# can draw data directly from SQL instead of creating a custom Datastruct
+# TODO: Add a waitscreen popup when the database is recalculating, or some other
+#       form of visual indication
 
 import os, sqlite3, re, json, boto3, decimal, shutil, datetime
 from boto3.dynamodb.conditions import Key, Attr
 from statistics import mean, median
 import matplotlib.pyplot as plt
-from math import floor
 
 from matplotlib.backends.backend_tkagg import (
     FigureCanvasTkAgg, NavigationToolbar2Tk)
@@ -14,8 +13,6 @@ from matplotlib.backend_bases import key_press_handler
 from matplotlib.figure import Figure
 
 import tkinter as tk
-
-import numpy as np
 
 ##### Utility Functions / Dictionaries #########################################
 
@@ -31,14 +28,6 @@ sql_type = {
     'bytes' : 'BLOB',
     'NoneType' : 'NULL'
     }
-
-## Get the SQLite type of a variable
-def get_type(arg):
-    value = str(type(arg))[8:-2]
-    try:
-        return sql_type[value]
-    except:
-        return "TEXT"
 
 def strikethrough(text):
     return '\u0336'.join(text) + '\u0336'
@@ -208,7 +197,6 @@ class databaseObject(object):
         converted_json["value"] = int(re.findall("(\d+)",data_json["value"])[0])
         print(converted_json)
         return converted_json
-
 
     def insert_data(self, json_data):
         if self.table == None:
@@ -402,30 +390,13 @@ class graph_plotter(tk.Frame):
     day_abbr = ("Mon","Tue","Wed","Thu","Fri","Sat","Sun")
     day_index = 0
 
+
     ##### Button Functions #####################################################
 
-    def _quit(self):
-        self.master.quit()     # stops mainloop
-        self.master.destroy()  # this is necessary on Windows to prevent Fatal Python Error: PyEval_RestoreThread: NULL tstate
-
-    def on_key_press(event):
-        print("you pressed {}".format(event.key))
-        key_press_handler(event, canvas, toolbar)
-
-    def key_event(e):
-        global current_pos
-
-        if e.key == "right":
-            current_pos += 1
-        elif e.key == "left":
-            current_pos -= 1
-        elif e.key == "escape":
-            plt.close()
-            return
-        else:
-            return
-        current_pos = current_pos % len(days)
-        plot_figure(current_pos)
+    def check_escape(self, event):
+        if event.key == "escape":
+            self.master.quit()
+            self.master.destroy()
 
     def set_day(self, diff):
         self.day_index = (self.day_index + diff) % 7
@@ -433,26 +404,12 @@ class graph_plotter(tk.Frame):
         self.plot_figure()
 
     def recalculate(self):
-        print("Recalculated Data")
+        self.waitscreen_start()
+        self.update()
         self.calculate_data()
         self.plot_figure()
-
-    # def hover(self, event):
-    #     #vis = self.annot.get_visible()
-    #     if event.inaxes == self.ax:
-    #         for bar in self.bar_container:
-    #             cont, ind = bar.contains(event)
-    #             if cont:
-    #                 # self.update_annot(val)
-    #                 # self.annot.set_visible(True)
-    #                 self.show_value(bar)
-    #                 # self.canvas.draw_idle()
-    #                 return
-    #             self.show_value(None)
-    #     if vis:
-    #         # self.annot.set_visible(False)
-    #         # self.canvas.draw_idle()
-    #         self.show_value(None)
+        self.waitscreen_stop()
+        self.update()
 
     def hover(self, event):
         if event.inaxes == self.ax:
@@ -482,15 +439,6 @@ class graph_plotter(tk.Frame):
             else:
                 widget.insert("end",self.week_starts[i])
 
-    def update_annot(self, val):
-        x = val.get_x()+val.get_width()/2.
-        y = val.get_y()+val.get_height()
-        print(x,y)
-        self.annot.xy = (x,y)
-        text = "({:.2g},{:.2g})".format( x,y )
-        self.annot.set_text("Hello")
-        self.annot.get_bbox_patch().set_alpha(0.4)
-
     def show_value(self, event):
         if event == None:
             self.label_values.configure(text="")
@@ -518,9 +466,11 @@ class graph_plotter(tk.Frame):
         self.label_mousepos.configure(text="t={}; y={}%".format(\
             round(x,1), round(y,1)))
 
-    ##### Positioning ##########################################################
+
+    ##### Drawing / Positioning ################################################
 
     def position(self):
+        # Base Frames
         self.f1 = tk.Frame(self)
         self.f2 = tk.Frame(self)
         self.f3 = tk.Frame(self)
@@ -535,22 +485,27 @@ class graph_plotter(tk.Frame):
         self.f3.grid(row=1,column=0)
         self.f4.grid(row=1,column=1)
 
+        # Frame 1
+        self.label_select_weeks = tk.Label(master=self.f1,text="Selected Weeks:")
+        self.label_select_weeks.grid(row=0, sticky=tk.W)
+
+        self.lb_weeks = tk.Listbox(master=self.f1,selectmode="SINGLE")
+        self.lb_weeks.bind('<<ListboxSelect>>',self.week_select)
+        self.lb_weeks.grid(row=1, sticky=tk.N+tk.W+tk.S+tk.E)
+
+        for w in self.week_starts:
+            self.lb_weeks.insert("end", w)
+
+        # Frame 2
         self.fig = Figure(figsize=(5, 4), dpi=100)
         self.ax = self.fig.add_subplot(111)
 
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.f2)  # A tk.DrawingArea.
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.f2)
         self.canvas.draw()
-        # self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1,)
         self.canvas.get_tk_widget().grid(row=0, sticky=tk.N+tk.W+tk.S+tk.E)
 
         self.plot_figure()
 
-        # self.annot = self.ax.annotate("", xy=(0,0), xytext=(-20,20),
-        #     textcoords="offset points", bbox=dict(boxstyle="round",
-        #     fc="black", ec="b", lw=2), arrowprops=dict(arrowstyle="->"))
-        # self.annot.set_visible(False)
-
-        # self.canvas.mpl_connect("key_press_event", self.on_key_press)
         self.canvas.mpl_connect("motion_notify_event", self.hover)
         self.canvas.mpl_connect("axes_leave_event", self.mouse_leave_plot)
 
@@ -560,6 +515,12 @@ class graph_plotter(tk.Frame):
         self.label_mousepos = tk.Label(master=self.f2, text="", fg="#777777")
         self.label_mousepos.grid(row=2, sticky=tk.W)
 
+        # Frame 3
+        self.button_recalc = tk.Button(master=self.f3, text="Recalculate", \
+            command=self.recalculate)
+        self.button_recalc.pack()
+
+        # Frame 4
         self.button_back = tk.Button(master=self.f4, text="<", \
             command=lambda : self.set_day(-1))
         self.button_back.grid(row=0,column=0)
@@ -571,71 +532,7 @@ class graph_plotter(tk.Frame):
             command=lambda : self.set_day(1))
         self.button_forward.grid(row=0,column=2)
 
-        self.button_recalc = tk.Button(master=self.f3, text="Recalculate", \
-            command=self.recalculate)
-        self.button_recalc.pack()
-
-        self.label_select_weeks = tk.Label(master=self.f1,text="Selected Weeks:")
-        self.label_select_weeks.grid(row=0, sticky=tk.W)
-
-        self.lb_weeks = tk.Listbox(master=self.f1,selectmode="SINGLE")
-        self.lb_weeks.bind('<<ListboxSelect>>',self.week_select)
-        self.lb_weeks.grid(row=1, sticky=tk.N+tk.W+tk.S+tk.E)
-
-        for w in self.week_starts:
-            self.lb_weeks.insert("end", w)
-
-        self.set_day(0)
-
-        self.grid()
-
-    def position2(self):
-        self.f1 = tk.Frame(self)
-        self.f2 = tk.Frame(self)
-        self.f3 = tk.Frame(self)
-        self.f4 = tk.Frame(self)
-        # self.f1.rowconfigure(1,weight=1)
-        # self.frame4.columnconfigure(1,minsize=50)
-
-        self.f1.grid(row=0,column=0)
-        self.f2.grid(row=0,column=1)
-        self.f3.grid(row=1,column=0)
-        self.f4.grid(row=1,column=1)
-
-        self.b1 = tk.Button(master=self.f1, text="B1", \
-            command=lambda : print("button 1"))
-        self.b1.pack()
-
-        self.b1 = tk.Button(master=self.f2, text="B2", \
-            command=lambda : print("button 2"))
-        self.b1.pack()
-
-        self.b1 = tk.Button(master=self.f3, text="B3", \
-            command=lambda : print("button 3"))
-        self.b1.pack()
-
-        self.b1 = tk.Button(master=self.f4, text="B4", \
-            command=lambda : print("button 4"))
-        self.b1.pack()
-
-        self.grid()
-
-    def position_test(self):
-        self.f1 = tk.Frame(self)
-        self.f2 = tk.Frame(self)
-        self.f2.rowconfigure(0, weight=1) # <-- row 0 will be resized
-
-        self.f1.grid(row=0, column=0)
-        self.f2.grid(row=0, column=1, sticky=(tk.N, tk.S, tk.E, tk.W))
-
-        ### Fill left frame with dummy elements to demonstrate the problem
-        for i in range(15):
-            tk.Label(self.f1, text="Label{}".format(i)).grid(row=i)
-
-        ### Put listbox on right frame
-        self.lbox = tk.Listbox(self.f2)
-        self.lbox.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
-
+        # Set positions
         self.grid()
 
     def plot_figure(self):
@@ -649,6 +546,24 @@ class graph_plotter(tk.Frame):
         self.ax.xaxis.set_ticks(list(range(6,24)))
         self.ax.axhline(y=mean(self.data[i]))
         self.canvas.draw()
+
+    def waitscreen_start(self):
+        self.waiting = True
+        canvas = self.canvas.get_tk_widget()
+        width, height = canvas.winfo_width(), canvas.winfo_height()
+        self.waitscreen = tk.Canvas(width=width, height=height, master=self.f2)
+        self.waitscreen.create_rectangle(5, 5, width-5, height-5)
+        self.waitscreen.create_text(width/2,height/2, \
+            text="Recalculating...")
+
+        canvas.grid_forget()
+        self.waitscreen.grid(row=0, sticky=tk.N+tk.W+tk.S+tk.E)
+
+    def waitscreen_stop(self):
+        self.waiting = False
+        canvas = self.canvas.get_tk_widget()
+        self.waitscreen.grid_forget()
+        canvas.grid(row=0, sticky=tk.N+tk.W+tk.S+tk.E)
 
     ##### Calculation Functions ################################################
 
@@ -672,9 +587,6 @@ class graph_plotter(tk.Frame):
                 break
         self.week_starts = week_starts
         self.week_switches = [1 for _ in week_starts]
-
-    def initial_calculations(self,stuff):
-        pass
 
     def calculate_data(self):
         data = []
@@ -705,7 +617,9 @@ class graph_plotter(tk.Frame):
 
             data.append(day_values)
         self.data = data
-        print("Calculation complete")
+
+
+    ##### init function ########################################################
 
     def __init__(self, master, gc):
         self.gc = gc
@@ -713,16 +627,15 @@ class graph_plotter(tk.Frame):
         self.get_week_starts()
         self.calculate_data()
         self.position()
+        self.set_day(0)
 
         print("Class working so far")
-
-
 
 
 ##### main function ############################################################
 
 def main():
-    # Update gymchecker
+    # # Update gymchecker
     # answer = input("update gymchecker? (y/n)   ")
     # if answer in ("y","Y"):
     #     setup_gymchecker()
@@ -733,21 +646,5 @@ def main():
     graph_plotter(root, gc)
     root.mainloop()
 
-
-
-    # Set up the interface
-
-    # Calculate the initial data
-
-    # Show interface
-    # fig = plt.figure()
-    # fig.canvas.mpl_connect("key_press_event", key_event)
-    # ax = fig.add_subplot(111)
-    # current_pos = 0
-    # plot_figure(fig,ax,current_pos)
-    # plt.show()
-
 if __name__=="__main__":
     main()
-
-# Add in a GUI to compute different combinations of weeks on the fly
