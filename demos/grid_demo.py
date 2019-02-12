@@ -2,10 +2,7 @@ import tkinter as tk
 
 class MinimalTestCase(tk.Frame):
 
-    def __init__(self, master, *args, **kwargs):
-
-        tk.Frame.__init__(self, master)
-
+    def position(self):
         self.f1 = tk.Frame(self)
         self.f2 = tk.Frame(self)
         self.f2.rowconfigure(0, weight=1) # <-- row 0 will be resized
@@ -22,6 +19,12 @@ class MinimalTestCase(tk.Frame):
         self.lbox.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
 
         self.grid()
+
+
+    def __init__(self, master, *args, **kwargs):
+
+        tk.Frame.__init__(self, master)
+        self.position()
 
 if __name__ == "__main__":
 

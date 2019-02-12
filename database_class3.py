@@ -1,7 +1,7 @@
 # Refactor the Database class to format the local database correctly, so that we
 # can draw data directly from SQL instead of creating a custom Datastruct
 
-import os, sqlite3, re, json, boto3, decimal, shutil, datetime, tkinter
+import os, sqlite3, re, json, boto3, decimal, shutil, datetime
 from boto3.dynamodb.conditions import Key, Attr
 from statistics import mean, median
 import matplotlib.pyplot as plt
@@ -12,6 +12,8 @@ from matplotlib.backends.backend_tkagg import (
 # Implement the default Matplotlib key bindings.
 from matplotlib.backend_bases import key_press_handler
 from matplotlib.figure import Figure
+
+import tkinter as tk
 
 import numpy as np
 
@@ -367,11 +369,21 @@ def round_time(time_string):
 
 class date():
     def __init__(self,value):
-        if type(value) == type(1):
-            d_strings = re.findall("(\d{4})(\d{2})(\d{2})",str(value))[0]
-            d_ints = [int(i) for i in d_strings]
-            self.value = datetime.date(*d_ints)
-            print("Success!")
+        type_int = type(1)
+        type_str = type("a")
+        type_date = type(datetime.date(1,1,1))
+
+        if type(value) not in (type_int, type_str, type_date):
+            print("ERROR: Not a valid date type: {} = {}".format(value, type(value)))
+            return
+
+        if type(value) == type_date:
+            self.value = value
+            return
+
+        d_strings = re.findall("(\d{4})-?(\d{2})-?(\d{2})",str(value))[0]
+        d_ints = [int(i) for i in d_strings]
+        self.value = datetime.date(*d_ints)
 
     def __int__(self):
         date_string = "".join(re.findall("(\d)",str(self.value)))
@@ -380,113 +392,25 @@ class date():
     def __str__(self):
         return str(self.value)
 
-class graph_plotter(tkinter.Frame):
-    open_hours = ((13,46),(13,46),(13,46),(13,46),(13,46),(16,46),(16,43))
+class graph_plotter(tk.Frame):
+
+    ##### Standard Data ########################################################
+
+    open_hours = ((13,46),(13,46),(13,46),(13,46),(13,46),(16,46),(16,43)) # Can be exported to separate file?
     open_times = [list(t/2 for t in range(h[0],h[1])) for h in open_hours]
     day_names = ("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday")
     day_abbr = ("Mon","Tue","Wed","Thu","Fri","Sat","Sun")
+    day_index = 0
 
-
+    ##### Button Functions #####################################################
 
     def _quit(self):
         self.master.quit()     # stops mainloop
-        self.master.destroy()  # this is necessary on Windows to prevent
-                        # Fatal Python Error: PyEval_RestoreThread: NULL tstate
-
-    def week_select(event):
-        global week_switches
-        widget = event.widget
-        index = widget.curselection()[0]
-        if week_switches[index] == 0:
-            week_switches[index] = 1
-        else:
-            week_switches[index] = 0
-        rewrite_weeks(widget)
-
-    def rewrite_weeks(widget):
-        widget.delete(0,"end")
-        for i in range(len(self.week_starts)):
-            if self.week_matrix[i] == 0:
-                widget.insert("end",strikethrough(weeks[i]))
-                widget.itemconfig("end", foreground="#999999")
-            else:
-                widget.insert("end",weeks[i])
-
-    def up_day():
-        set_day(1)
-
-    def down_day():
-        set_day(-1)
-
-    def set_day(diff):
-        global day_count
-        day_count = (day_count + diff) % 7
-        l2.configure(text=day_names[day_count])
+        self.master.destroy()  # this is necessary on Windows to prevent Fatal Python Error: PyEval_RestoreThread: NULL tstate
 
     def on_key_press(event):
         print("you pressed {}".format(event.key))
         key_press_handler(event, canvas, toolbar)
-
-    def position(self):
-        self.frame1 = tkinter.Frame(self)
-        self.frame2 = tkinter.Frame(self)
-        self.frame3 = tkinter.Frame(self)
-        self.frame4 = tkinter.Frame(self)
-        self.frame1.rowconfigure(1,weight=1)
-        self.frame4.columnconfigure(1,minsize=50)
-
-        self.fig = Figure(figsize=(5, 4), dpi=100)
-        t = np.arange(0, 3, .01)
-        self.fig.add_subplot(111).plot(t, 2 * np.sin(2 * np.pi * t))
-
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame2)  # A tk.DrawingArea.
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=1,)
-
-        self.toolbar = NavigationToolbar2Tk(self.canvas, self.frame2)
-        self.toolbar.update()
-        self.canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=1)
-
-        self.canvas.mpl_connect("key_press_event", self.on_key_press)
-
-        self.b1 = tkinter.Button(master=self.frame4, text="<", command=self.down_day)
-        self.b1.grid(row=0,column=0)
-
-        self.l2 = tkinter.Label(master=self.frame4, text="day_goes_here")
-        self.l2.grid(row=0,column=1)
-
-        self.b3 = tkinter.Button(master=self.frame4, text=">", command=self.up_day)
-        self.b3.grid(row=0,column=2)
-
-        self.button4 = tkinter.Button(master=self.frame3, text="Recalculate", command=self._quit)
-        self.button4.pack()
-
-        self.label = tkinter.Label(master=self.frame1,text="Selected Weeks:")
-        self.label.grid(row=0, sticky=tkinter.W)
-
-        self.lb2 = tkinter.Listbox(master=self.frame1,selectmode="SINGLE")
-        self.lb2.bind('<<ListboxSelect>>',self.week_select)
-        self.lb2.grid(row=1, sticky=tkinter.N+tkinter.W+tkinter.S+tkinter.E)
-
-        self.grid()
-
-    def position_test(self):
-        self.f1 = tkinter.Frame(self)
-        self.f2 = tkinter.Frame(self)
-        self.f2.rowconfigure(0, weight=1) # <-- row 0 will be resized
-
-        self.f1.grid(row=0, column=0)
-        self.f2.grid(row=0, column=1, sticky=(tkinter.N, tkinter.S, tkinter.E, tkinter.W))
-
-        ### Fill left frame with dummy elements to demonstrate the problem
-        for i in range(15):
-            tkinter.Label(self.f1, text="Label{}".format(i)).grid(row=i)
-
-        ### Put listbox on right frame
-        self.lbox = tkinter.Listbox(self.f2)
-        self.lbox.grid(row=0, column=0, sticky=(tkinter.N, tkinter.S, tkinter.E, tkinter.W))
-
-        self.grid()
 
     def key_event(e):
         global current_pos
@@ -503,75 +427,292 @@ class graph_plotter(tkinter.Frame):
         current_pos = current_pos % len(days)
         plot_figure(current_pos)
 
-    def plot_figure(fig,ax,i):
-        ax.cla()
-        ax.bar(open_times[i],data[i],width=0.4)
-        ax.set_title("{}: Mean={}; Median={}".format(days[i],means[i],medians[i]))
-        ax.set_xlim([6,23.5])
-        ax.set_ylim([0,upper_limit])
-        ax.xaxis.set_ticks(list(range(6,24)))
-        ax.axhline(y=means[i])
-        fig.canvas.draw()
+    def set_day(self, diff):
+        self.day_index = (self.day_index + diff) % 7
+        self.label_day.configure(text=self.day_abbr[self.day_index])
+        self.plot_figure()
 
-    def get_week_starts(gc):
-        dates = gc.get_uniques("date, day", "date")
+    def recalculate(self):
+        print("Recalculated Data")
+        self.calculate_data()
+        self.plot_figure()
+
+    # def hover(self, event):
+    #     #vis = self.annot.get_visible()
+    #     if event.inaxes == self.ax:
+    #         for bar in self.bar_container:
+    #             cont, ind = bar.contains(event)
+    #             if cont:
+    #                 # self.update_annot(val)
+    #                 # self.annot.set_visible(True)
+    #                 self.show_value(bar)
+    #                 # self.canvas.draw_idle()
+    #                 return
+    #             self.show_value(None)
+    #     if vis:
+    #         # self.annot.set_visible(False)
+    #         # self.canvas.draw_idle()
+    #         self.show_value(None)
+
+    def hover(self, event):
+        if event.inaxes == self.ax:
+            self.show_value(event)
+
+    def mouse_leave_plot(self, event):
+        self.show_value(None)
+
+
+    ##### Follow-up Functions ##################################################
+
+    def week_select(self, event):
+        widget = event.widget
+        index = widget.curselection()[0]
+        if self.week_switches[index] == 0:
+            self.week_switches[index] = 1
+        else:
+            self.week_switches[index] = 0
+        self.rewrite_weeks(widget)
+
+    def rewrite_weeks(self, widget):
+        widget.delete(0,"end")
+        for i in range(len(self.week_starts)):
+            if self.week_switches[i] == 0:
+                widget.insert("end",strikethrough(self.week_starts[i]))
+                widget.itemconfig("end", foreground="#999999")
+            else:
+                widget.insert("end",self.week_starts[i])
+
+    def update_annot(self, val):
+        x = val.get_x()+val.get_width()/2.
+        y = val.get_y()+val.get_height()
+        print(x,y)
+        self.annot.xy = (x,y)
+        text = "({:.2g},{:.2g})".format( x,y )
+        self.annot.set_text("Hello")
+        self.annot.get_bbox_patch().set_alpha(0.4)
+
+    def show_value(self, event):
+        if event == None:
+            self.label_values.configure(text="")
+            self.label_mousepos.configure(text="")
+            return
+
+        # Find the appropriate x_value:
+        x, y = event.xdata, event.ydata
+        time_pos = round(x * 2) / 2.
+
+        # Get index of time position
+        try:
+            time_index = self.open_times[self.day_index].index(time_pos)
+            value = round(self.data[self.day_index][time_index],1)
+        except ValueError:
+            value = 0
+
+        hours = str(int(time_pos))
+        hours = hours if (len(hours) == 2) else "0" + hours
+        minutes = "30" if (time_pos % 1 == 0.5) else "00"
+        self.label_values.configure(text="{} {}:{} = {}%".format(\
+            self.day_names[self.day_index], hours, minutes, value))
+
+        # Show relative mouse position, for evaluating lines and such
+        self.label_mousepos.configure(text="t={}; y={}%".format(\
+            round(x,1), round(y,1)))
+
+    ##### Positioning ##########################################################
+
+    def position(self):
+        self.f1 = tk.Frame(self)
+        self.f2 = tk.Frame(self)
+        self.f3 = tk.Frame(self)
+        self.f4 = tk.Frame(self)
+
+        self.f1.rowconfigure(1,weight=1)
+        self.f4.columnconfigure(1,minsize=50)
+        self.f2.rowconfigure(0,weight=1)
+
+        self.f1.grid(row=0, column=0, sticky=tk.N+tk.W+tk.S+tk.E)
+        self.f2.grid(row=0,column=1)
+        self.f3.grid(row=1,column=0)
+        self.f4.grid(row=1,column=1)
+
+        self.fig = Figure(figsize=(5, 4), dpi=100)
+        self.ax = self.fig.add_subplot(111)
+
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.f2)  # A tk.DrawingArea.
+        self.canvas.draw()
+        # self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1,)
+        self.canvas.get_tk_widget().grid(row=0, sticky=tk.N+tk.W+tk.S+tk.E)
+
+        self.plot_figure()
+
+        # self.annot = self.ax.annotate("", xy=(0,0), xytext=(-20,20),
+        #     textcoords="offset points", bbox=dict(boxstyle="round",
+        #     fc="black", ec="b", lw=2), arrowprops=dict(arrowstyle="->"))
+        # self.annot.set_visible(False)
+
+        # self.canvas.mpl_connect("key_press_event", self.on_key_press)
+        self.canvas.mpl_connect("motion_notify_event", self.hover)
+        self.canvas.mpl_connect("axes_leave_event", self.mouse_leave_plot)
+
+        self.label_values = tk.Label(master=self.f2, text="")
+        self.label_values.grid(row=1, sticky=tk.W)
+
+        self.label_mousepos = tk.Label(master=self.f2, text="", fg="#777777")
+        self.label_mousepos.grid(row=2, sticky=tk.W)
+
+        self.button_back = tk.Button(master=self.f4, text="<", \
+            command=lambda : self.set_day(-1))
+        self.button_back.grid(row=0,column=0)
+
+        self.label_day = tk.Label(master=self.f4, text="day_goes_here")
+        self.label_day.grid(row=0,column=1)
+
+        self.button_forward = tk.Button(master=self.f4, text=">", \
+            command=lambda : self.set_day(1))
+        self.button_forward.grid(row=0,column=2)
+
+        self.button_recalc = tk.Button(master=self.f3, text="Recalculate", \
+            command=self.recalculate)
+        self.button_recalc.pack()
+
+        self.label_select_weeks = tk.Label(master=self.f1,text="Selected Weeks:")
+        self.label_select_weeks.grid(row=0, sticky=tk.W)
+
+        self.lb_weeks = tk.Listbox(master=self.f1,selectmode="SINGLE")
+        self.lb_weeks.bind('<<ListboxSelect>>',self.week_select)
+        self.lb_weeks.grid(row=1, sticky=tk.N+tk.W+tk.S+tk.E)
+
+        for w in self.week_starts:
+            self.lb_weeks.insert("end", w)
+
+        self.set_day(0)
+
+        self.grid()
+
+    def position2(self):
+        self.f1 = tk.Frame(self)
+        self.f2 = tk.Frame(self)
+        self.f3 = tk.Frame(self)
+        self.f4 = tk.Frame(self)
+        # self.f1.rowconfigure(1,weight=1)
+        # self.frame4.columnconfigure(1,minsize=50)
+
+        self.f1.grid(row=0,column=0)
+        self.f2.grid(row=0,column=1)
+        self.f3.grid(row=1,column=0)
+        self.f4.grid(row=1,column=1)
+
+        self.b1 = tk.Button(master=self.f1, text="B1", \
+            command=lambda : print("button 1"))
+        self.b1.pack()
+
+        self.b1 = tk.Button(master=self.f2, text="B2", \
+            command=lambda : print("button 2"))
+        self.b1.pack()
+
+        self.b1 = tk.Button(master=self.f3, text="B3", \
+            command=lambda : print("button 3"))
+        self.b1.pack()
+
+        self.b1 = tk.Button(master=self.f4, text="B4", \
+            command=lambda : print("button 4"))
+        self.b1.pack()
+
+        self.grid()
+
+    def position_test(self):
+        self.f1 = tk.Frame(self)
+        self.f2 = tk.Frame(self)
+        self.f2.rowconfigure(0, weight=1) # <-- row 0 will be resized
+
+        self.f1.grid(row=0, column=0)
+        self.f2.grid(row=0, column=1, sticky=(tk.N, tk.S, tk.E, tk.W))
+
+        ### Fill left frame with dummy elements to demonstrate the problem
+        for i in range(15):
+            tk.Label(self.f1, text="Label{}".format(i)).grid(row=i)
+
+        ### Put listbox on right frame
+        self.lbox = tk.Listbox(self.f2)
+        self.lbox.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+
+        self.grid()
+
+    def plot_figure(self):
+        i = self.day_index
+        self.ax.cla()
+        self.bar_container = self.ax.bar(self.open_times[i],self.data[i],width=0.4)
+        self.ax.set_title(self.day_names[i])
+        self.ax.set_xlim([6,23.5])
+        max_value = 5*(round(arraymax(self.data)/5)+1)
+        self.ax.set_ylim([0,max_value])
+        self.ax.xaxis.set_ticks(list(range(6,24)))
+        self.ax.axhline(y=mean(self.data[i]))
+        self.canvas.draw()
+
+    ##### Calculation Functions ################################################
+
+    def get_week_starts(self):
+        dates = self.gc.get_uniques("date, day", "date")
         for d in dates:
             if d[1] == "Monday":
-                start_date = date_obj(d[0])
+                start_date = date(d[0]).value
                 break
         for d in reversed(dates):
             if d[1] == "Sunday":
-                end_date = date_obj(d[0])
+                end_date = date(d[0]).value
                 break
         print("Data ranges from {} to {}".format(start_date, end_date))
         temp_date = start_date
         week_starts = []
         while True:
-            week_starts.append(temp_date)
+            week_starts.append(str(date(temp_date)))
             temp_date += datetime.timedelta(days=7)
             if temp_date > end_date:
                 break
-        return week_starts
+        self.week_starts = week_starts
+        self.week_switches = [1 for _ in week_starts]
 
     def initial_calculations(self,stuff):
-        week_starts = self.get_week_starts(gc)
-        week_matrix = [1 for _ in range(len(week_starts))]
+        pass
 
-    def calculate_data(gc, week_starts, week_matrix):
+    def calculate_data(self):
         data = []
 
         for d in range(7):
             day_values = []
-            for t in open_times[d]:
+            for t in self.open_times[d]:
                 total = 0
                 r_count = 0
-                for i in range(len(week_starts)):
-                    if week_matrix[i] == 0:
+                for i in range(len(self.week_starts)):
+                    if self.week_switches[i] == 0:
                         continue
-                    w_start = week_starts[i]
+                    w_start = date(self.week_starts[i]).value
                     w_end = w_start + datetime.timedelta(days=6)
 
                     com1 = "SELECT value FROM gymchecker WHERE date BETWEEN {} AND {} ".format(\
-                        date_int(w_start), date_int(w_end))
-                    com2 = "AND time={} AND day='{}'".format(t,day_names[d])
-                    results = gc.x(com1 + com2)
+                        int(date(w_start)), int(date(w_end)))
+                    com2 = "AND time={} AND day='{}'".format(t, self.day_names[d])
+                    results = self.gc.x(com1 + com2)
                     try:
                         total += results[0][0]
                         r_count += 1
                     except:
-                        print("Error for: {}".format(com1+com2))
+                        # print("Error for: {}".format(com1+com2))
+                        pass
                 total /= max(1,r_count)
                 day_values.append(total)
 
             data.append(day_values)
-        return data
+        self.data = data
+        print("Calculation complete")
 
-    def __init__(self, master, *args, **kwargs):
-        tkinter.Frame.__init__(self, master)
-
-        self.position_test()
-        # rewrite_weeks(lb2)
-        # set_day(0)
+    def __init__(self, master, gc):
+        self.gc = gc
+        tk.Frame.__init__(self, master)
+        self.get_week_starts()
+        self.calculate_data()
+        self.position()
 
         print("Class working so far")
 
@@ -588,8 +729,8 @@ def main():
 
     gc = load_gymchecker()
 
-    root=tkinter.Tk()
-    graph_plotter(root)
+    root=tk.Tk()
+    graph_plotter(root, gc)
     root.mainloop()
 
 
