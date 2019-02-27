@@ -1,4 +1,4 @@
-import os, sqlite3, re, json, boto3, decimal, shutil, datetime, sys
+import os, sqlite3, re, json, boto3, decimal, shutil, datetime, sys, psutil
 from boto3.dynamodb.conditions import Key, Attr
 from statistics import mean, median
 import matplotlib.pyplot as plt
@@ -10,6 +10,7 @@ from matplotlib.backend_bases import key_press_handler
 from matplotlib.figure import Figure
 
 import tkinter as tk
+from tkinter import messagebox as mb
 
 ##### Utility Functions / Dictionaries #########################################
 
@@ -377,6 +378,49 @@ class date():
     def __str__(self):
         return str(self.value)
 
+class mouseControl():
+    def __init__(self, widget, delay=300):
+        self.double_click_flag = False
+        self.button_released_flag = False
+        self.widget = widget
+        self.widget.bind('<Button-1>', self.clicked)
+        self.widget.bind('<Double-1>', self.double_click)
+        self.widget.bind('<ButtonRelease-1>', self.button_released)
+        self.widget.bind('<B1-Motion>', self.moved)
+        self.delay = delay
+
+    def clicked(self, event):
+        self.double_click_flag, self.button_released_flag = False, False
+        self.widget.after(self.delay, self.action, event)
+
+    def double_click(self, event):
+        self.double_click_flag = True
+
+    def button_released(self, event):
+        self.button_released_flag = True
+
+    def moved(self, event):
+        pass
+
+    def action(self, event):
+        if self.button_released_flag:
+            if self.double_click_flag:
+                print("double mouse click event")
+            else:
+                print("single mouse click event")
+
+class listboxControl(mouseControl):
+    def __init__(self, widget, parent):
+        mouseControl.__init__(self, widget, 175)
+        self.parent = parent
+
+    def action(self, event):
+        if self.button_released_flag:
+            if self.double_click_flag:
+                self.parent.week_select(self.widget, True)
+            else:
+                self.parent.week_select(self.widget, False)
+
 class graph_plotter(tk.Frame):
 
     ##### Standard Data ########################################################
@@ -401,12 +445,70 @@ class graph_plotter(tk.Frame):
         self.plot_figure()
 
     def recalculate(self):
+        if sum(self.weeks_selected) == 0:
+            mb.showwarning("No Weeks Selected","Please select at least 1 week")
+            return
+        self.week_switches = [i for i in self.weeks_selected]
+        self.rewrite_weeks()
         self.waitscreen_start()
         self.update()
         self.calculate_data()
         self.plot_figure()
         self.waitscreen_stop()
         self.update()
+
+    def save_weeks(self):
+        savefile = rel_path("data/saved_weeks.csv")
+        str_data = [str(c) for c in self.weeks_selected]
+        save_data = ",".join(str_data)
+        with open(savefile,"w") as f:
+            f.write(save_data)
+
+    def load_weeks(self):
+        loadfile = rel_path("data/saved_weeks.csv")
+        if not os.path.isfile(loadfile):
+            default_file = rel_path("data/term_weeks.csv")
+            if os.path.isfile(default_file):
+                with open(default_file, "r") as f:
+                    weeks_str = f.read().split(",")
+            else:
+                mb.showwarning("ERROR","No 'term_dates.csv' file exists")
+                return
+        else:
+            with open(loadfile,"r") as f:
+                weeks_str = f.read().split(",")
+        weeks_int = [int(i) for i in weeks_str]
+        self.weeks_selected = weeks_int
+        self.rewrite_weeks()
+
+    def reset(self):
+        loadfile = rel_path("data/term_weeks.csv")
+        if not os.path.isfile(loadfile):
+                mb.showwarning("ERROR","No 'term_dates.csv' file exists")
+                return
+        else:
+            with open(loadfile,"r") as f:
+                weeks_str = f.read().split(",")
+        weeks_int = [int(i) for i in weeks_str]
+        self.weeks_selected = weeks_int
+        self.rewrite_weeks()
+
+    def restart_and_update(self):
+        result = mb.askyesno("Update","Restart program and update database?")
+        if not result:
+            return
+        args = sys.argv
+        if not (any(x in ("--update","-u") for x in args)):
+            args.append("-u")
+        try:
+            p = psutil.Process(os.getpid())
+            for handler in p.open_files() + p.connections():
+                os.close(handler.fd)
+        except Exception as e:
+            pass
+            #logging.error(e)
+        python = sys.executable
+        os.execl(python, python, *args)
 
     def hover(self, event):
         if event.inaxes == self.ax:
@@ -415,26 +517,36 @@ class graph_plotter(tk.Frame):
     def mouse_leave_plot(self, event):
         self.show_value(None)
 
+    def week_select(self, widget, single):
+        index = widget.curselection()[0]
+        if single:
+            for i in range(len(self.weeks_selected)):
+                self.weeks_selected[i] = 0
+            self.weeks_selected[index] = 1
+        else:
+            index = widget.curselection()[0]
+            if self.weeks_selected[index] == 0:
+                self.weeks_selected[index] = 1
+            else:
+                self.weeks_selected[index] = 0
+        self.rewrite_weeks()
+
 
     ##### Follow-up Functions ##################################################
 
-    def week_select(self, event):
-        widget = event.widget
-        index = widget.curselection()[0]
-        if self.week_switches[index] == 0:
-            self.week_switches[index] = 1
-        else:
-            self.week_switches[index] = 0
-        self.rewrite_weeks(widget)
-
-    def rewrite_weeks(self, widget):
-        widget.delete(0,"end")
+    def rewrite_weeks(self):
+        lb = self.lb_weeks
+        lb.delete(0,"end")
         for i in range(len(self.week_starts)):
+            text = self.week_starts[i]
+
             if self.week_switches[i] == 0:
-                widget.insert("end",strikethrough(self.week_starts[i]))
-                widget.itemconfig("end", foreground="#999999")
+                lb.insert("end",strikethrough(text))
             else:
-                widget.insert("end",self.week_starts[i])
+                lb.insert("end",text)
+
+            if self.weeks_selected[i] == 0:
+                lb.itemconfig("end",foreground="#999999")
 
     def show_value(self, event):
         if event == None:
@@ -469,7 +581,7 @@ class graph_plotter(tk.Frame):
     def position(self):
         # Base Frames
         self.f1 = tk.Frame(self)
-        self.f2 = tk.Frame(self)
+        self.f2 = tk.Frame(self, bg="#ffffff")
         self.f3 = tk.Frame(self)
         self.f4 = tk.Frame(self)
 
@@ -478,20 +590,33 @@ class graph_plotter(tk.Frame):
         self.f2.rowconfigure(0,weight=1)
 
         self.f1.grid(row=0, column=0, sticky=tk.N+tk.W+tk.S+tk.E)
-        self.f2.grid(row=0,column=1)
-        self.f3.grid(row=1,column=0)
-        self.f4.grid(row=1,column=1)
+        self.f2.grid(row=0, column=1)
+        self.f3.grid(row=1, column=0)
+        self.f4.grid(row=1, column=1)
 
         # Frame 1
         self.label_select_weeks = tk.Label(master=self.f1,text="Selected Weeks:")
         self.label_select_weeks.grid(row=0, sticky=tk.W)
 
         self.lb_weeks = tk.Listbox(master=self.f1,selectmode="SINGLE")
-        self.lb_weeks.bind('<<ListboxSelect>>',self.week_select)
         self.lb_weeks.grid(row=1, sticky=tk.N+tk.W+tk.S+tk.E)
+        self.lb_weeks_mc = listboxControl(self.lb_weeks, self)
 
         for w in self.week_starts:
             self.lb_weeks.insert("end", w)
+
+        self.f5 = tk.Frame(master=self.f1)
+        self.f5.grid(row=2)
+
+        self.button_save = tk.Button(master=self.f5, text="Save", \
+            command=self.save_weeks)
+        self.button_save.pack(side=tk.LEFT)
+        self.button_load = tk.Button(master=self.f5, text="Load", \
+            command=self.load_weeks)
+        self.button_load.pack(side=tk.LEFT)
+        self.button_load = tk.Button(master=self.f5, text="Reset", \
+            command=self.reset)
+        self.button_load.pack(side=tk.RIGHT)
 
         # Frame 2
         self.fig = Figure(figsize=(5, 4), dpi=100)
@@ -506,16 +631,19 @@ class graph_plotter(tk.Frame):
         self.canvas.mpl_connect("motion_notify_event", self.hover)
         self.canvas.mpl_connect("axes_leave_event", self.mouse_leave_plot)
 
-        self.label_values = tk.Label(master=self.f2, text="")
+        self.label_values = tk.Label(master=self.f2, text="", bg="#ffffff")
         self.label_values.grid(row=1, sticky=tk.W)
 
-        self.label_mousepos = tk.Label(master=self.f2, text="", fg="#777777")
+        self.label_mousepos = tk.Label(master=self.f2, text="", fg="#777777", bg="#ffffff")
         self.label_mousepos.grid(row=2, sticky=tk.W)
 
         # Frame 3
         self.button_recalc = tk.Button(master=self.f3, text="Recalculate", \
             command=self.recalculate)
-        self.button_recalc.pack()
+        self.button_recalc.pack(side=tk.LEFT)
+        self.button_update = tk.Button(master=self.f3, text="UPDATE", \
+            command=self.restart_and_update)
+        self.button_update.pack(side=tk.LEFT)
 
         # Frame 4
         self.button_back = tk.Button(master=self.f4, text="<", \
@@ -540,9 +668,11 @@ class graph_plotter(tk.Frame):
             round(mean(self.data[i]),1)))
         self.ax.set_xlim([6,23.5])
         max_value = 5*(round(arraymax(self.data)/5)+1)
+        total_mean = mean(map(mean, self.data))
         self.ax.set_ylim([0,max_value])
         self.ax.xaxis.set_ticks(list(range(6,24)))
         self.ax.axhline(y=mean(self.data[i]))
+        self.ax.axhline(y=total_mean, alpha=0.2, color="#ff0000")
         self.canvas.draw()
 
     def waitscreen_start(self):
@@ -585,6 +715,7 @@ class graph_plotter(tk.Frame):
                 break
         self.week_starts = week_starts
         self.week_switches = [1 for _ in week_starts]
+        self.weeks_selected = [1 for _ in week_starts]
 
     def calculate_data(self):
         data = []
