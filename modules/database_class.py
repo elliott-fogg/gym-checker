@@ -1,45 +1,13 @@
+# database_class
+# A database using SQLite3 to hold a local copy of the AWS DynamoDB database
+
 import os, sqlite3, re, json, boto3, decimal, shutil
-from boto3.dynamodb.conditions import Key, Attr
+from boto3.dynamodb.conditions import Attr
+from modules.shared_functions import *
 
-##### Utility Functions / Dictionaries #########################################
+##### database class ###########################################################
 
-oseu = os.path.expanduser
-
-def rel_path(path):
-    dirname = os.path.dirname(os.path.realpath(__file__))
-    return dirname + "/" + path
-
-## A dictionary for converting from Python types to SQLite Types
-sql_type = {
-    'str' : 'TEXT',
-    'int' : 'INTEGER',
-    'float' : 'REAL',
-    'bytes' : 'BLOB',
-    'NoneType' : 'NULL'
-    }
-
-## Get the SQLite type of a variable
-def get_type(arg):
-    value = str(type(arg))[8:-2]
-    try:
-        return sql_type[value]
-    except:
-        return "TEXT"
-
-class DecimalEncoder(json.JSONEncoder):
-    """DecimalEncoder - A class to translate returned JSON data from AWS that
-        uses the Decimal objects for its numbers."""
-    def default(self, o):
-        if isinstance(o, decimal.Decimal):
-            if o % 1 > 0:
-                return float(o)
-            else:
-                return int(o)
-        return super(DecimalEncoder, self).default(o)
-
-##### DatabaseObject Class #####################################################
-
-class databaseObject(object):
+class database(object):
 
     def __init__(self, file_path, table_name=None, parameters=None):
         self.file_path = file_path
@@ -53,10 +21,10 @@ class databaseObject(object):
 
     def set_table(self, table_name, param_array=None):
         if self.check_table_exists(table_name):
-            print("Table '{}' already exists".format(table_name))
+            qprint("Table '{}' already exists".format(table_name))
             self.table = table_name
             self.set_table_params(table_name)
-            print("Params: {}".format(self.params_to_text()))
+            qprint("Params: {}".format(self.params_to_text()))
         else:
             if param_array == None:
                 print("Cannot create table. No parameters provided")
@@ -158,23 +126,12 @@ class databaseObject(object):
                 print("ENTRY:\n{}".format(entry))
                 continue
 
-            param_type_array = []
-            for key in self.param_order:
-                if self.params[key] != get_type(entry[key]):
-                    param_type_array.append( (key,entry[key],get_type(entry[key]),self.params[key]) )
-            if param_type_array != []:
-                print("Entry {} has values of the wrong type:")
-                for p in param_type_array:
-                    print("\t{}={} ('{}', should be '{}')".format(*p))
-                    print(entry)
-                continue
-
             # If we've reached here, entry has passed all checks
-            valid_entries.append(entry)
+            valid_entries.append(self.convert_data(entry))
 
         num_total_entries = len(data_json)
         num_valid_entries = len(valid_entries)
-        print("{}/{} entries are valid.".format(num_valid_entries,num_total_entries))
+        qprint("{}/{} entries are valid.".format(num_valid_entries,num_total_entries))
         if num_valid_entries == 0:
             print("No valid entries to input. Aborting.")
             return [None,0,None]
@@ -189,6 +146,17 @@ class databaseObject(object):
 
         return (valid_entry_array,num_valid_entries,num_params)
 
+    def convert_data(self,data_json):
+        # Convert the time
+        converted_json = {}
+        converted_json["ID"] = data_json["ID"]
+        converted_json["day"] = data_json["day"]
+        converted_json["time"] = round_time(data_json["time"])
+        converted_json["date"] = int("".join(re.findall("(\d+)",data_json["date"])))
+        converted_json["value"] = int(re.findall("(\d+)",data_json["value"])[0])
+        qprint(converted_json)
+        return converted_json
+
     def insert_data(self, json_data):
         if self.table == None:
             print("No table selected")
@@ -196,7 +164,7 @@ class databaseObject(object):
         data_array, num_entries, num_params = self.format_data(json_data)
         if num_entries == 0:
             return
-        print("Entries: {}, Params: {}".format(num_entries, num_params))
+        qprint("Entries: {}, Params: {}".format(num_entries, num_params))
         c = self.cursor
         q_marks = "(?" + ",?" * (num_params-1) + ")"
         command = "INSERT INTO {} VALUES {}".format(self.table, q_marks)
@@ -223,9 +191,12 @@ class databaseObject(object):
         r = self.x("SELECT count(*) FROM {}".format(self.table))
         return r[0][0]
 
-    def get_uniques(self,column_name):
+    def get_uniques(self,distinct_columns,sort_columns=None):
+        if sort_columns == None:
+            sort_columns = distinct_columns
         r = self.x("SELECT DISTINCT {} FROM {} ORDER BY {}".format(\
-            column_name, self.table, column_name))
+            distinct_columns, self.table, sort_columns))
+        return r
 
     def locate_files(self):
         c = self.cursor
@@ -234,7 +205,49 @@ class databaseObject(object):
         for row in rows:
             print(row[0], row[1], row[2])
 
-##### Gymchecker Functions #####################################################
+    def update_from_aws(self):
+        # Load Access Keys
+        with open(data("private.access_keys"), "r") as f:
+            contents = f.read()
+        lines = contents.split()
+        ACCESS_ID = lines[0].split("#")[0]
+        ACCESS_KEY = lines[1].split("#")[0]
+
+        # Setup Resources
+        dynamodb = boto3.resource("dynamodb", region_name="eu-west-2", \
+            aws_access_key_id = ACCESS_ID, aws_secret_access_key = ACCESS_KEY)
+        aws_table = dynamodb.Table("GymCheckerData")
+
+        # Find highest ID number in current database
+        max_id = self.x("SELECT MAX(ID) FROM {}".format(self.table))[0][0]
+        if max_id == None: max_id = 0;
+        # Access AWS database
+        print("\nAccessing AWS database...")
+        raw_response = aws_table.scan(
+            FilterExpression=Attr('ID').gt(max_id))
+        print("Access complete.")
+
+        # Format results
+        qprint("\nAWS Reponse Metadata:")
+        response_data = json.loads(json.dumps(raw_response, indent=4, cls=DecimalEncoder))
+        results = response_data.pop("Items")
+        current_items = response_data.pop("ScannedCount")
+        qprint(json.dumps(response_data, indent=2))
+        qprint("")
+
+        # Insert results into table
+        self.insert_data(results)
+
+        # Check the number of entries in the table
+        entries = self.count_entries()
+        if entries == current_items:
+            print("MATCH - {} entries in local and AWS tables.".format(entries))
+            backup(self.file_path)
+        else:
+            print("ERROR - Entries in table and AWS do not match:")
+            print("Table: {}; AWS: {}".format(entries,current_items))
+
+##### Associated Functions #####################################################
 
 ## backup(file_path,shrink_allowed)
 # Create a backup of the specified file. If shrink_allowed is False, do not
@@ -257,7 +270,7 @@ def backup(file_path,shrink_allowed=False):
             print("Backup created.")
             return
 
-    print("\nDatabase: {}, Backup: {}".format(file_size,backup_size))
+    qprint("\nDatabase: {}, Backup: {}".format(file_size,backup_size))
     if backup_size > file_size and not shrink_allowed:
         print("##########")
         print("WARNING: Current version of '{}' is smaller than backup!".format(file_path))
@@ -265,60 +278,6 @@ def backup(file_path,shrink_allowed=False):
         print("Please check the database before erasing the backup.")
         print("##########")
     else:
-        print("Updating backup for '{}'...".format(file_path))
+        qprint("Updating backup for '{}'...".format(file_path))
         shutil.copy(file_path,backup_path)
-        print("Backup overwritten.")
-
-## update_from_aws_gymchecker(dbObject)
-# Takes the specified databaseObject and updates it from the AWS table. Uses the
-# ACCESS_ID and ACCESS_KEY from an external file which is not uploaded to Github.
-def update_from_aws_gymchecker(dbObject):
-    # Load Access Keys
-    with open(rel_path("data/private.access_keys"), "r") as f:
-        contents = f.read()
-    lines = contents.split()
-    ACCESS_ID = lines[0].split("#")[0]
-    ACCESS_KEY = lines[1].split("#")[0]
-
-    # Setup Resources
-    dynamodb = boto3.resource("dynamodb", region_name="eu-west-2", \
-        aws_access_key_id = ACCESS_ID, aws_secret_access_key = ACCESS_KEY)
-    table = dynamodb.Table("GymCheckerData")
-
-    # Find highest ID number in current database
-    max_id = dbObject.x("SELECT MAX(ID) FROM {}".format(dbObject.table))[0][0]
-    if max_id == None: max_id = 0;
-    # Access AWS database
-    print("\nAccessing AWS database...")
-    raw_response = table.scan(
-        FilterExpression=Attr('ID').gt(max_id))
-    print("Access complete.")
-
-    # Format results
-    print("\nAWS Reponse Metadata:")
-    response_data = json.loads(json.dumps(raw_response, indent=4, cls=DecimalEncoder))
-    results = response_data.pop("Items")
-    print(json.dumps(response_data, indent=2))
-    print("")
-
-    # Insert results into table
-    dbObject.insert_data(results)
-
-    # Check the number of entries in the table
-    entries = dbObject.count_entries()
-    print("{} entries in table.".format(entries))
-
-    backup(dbObject.file_path)
-
-## load_gymchecker()
-# Returns the gymchecker object, to play around with in iPython
-def load_gymchecker():
-    dbp = rel_path("data/gymchecker.db")
-    params = (('ID','INTEGER'),('date','TEXT'),('day','TEXT'),('time','TEXT'),('value','TEXT'))
-    return databaseObject(dbp, 'gymchecker', params)
-
-## setup_gymchecker()
-# Creates the gymchecker table if missing, and updates it
-def setup_gymchecker():
-    gc = load_gymchecker()
-    update_from_aws_gymchecker(gc)
+        qprint("Backup overwritten.")

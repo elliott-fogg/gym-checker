@@ -1,6 +1,7 @@
 ##### Test Suite ###############################################################
 
-import database_class as dbc
+import database_class2 as dbc
+import json, os, sqlite3, boto3, decimal, shutil
 
 ## Test Data that is in the correct format
 valid_data = [{
@@ -39,6 +40,13 @@ single_data = [
     "value": "32%"
     }]
 
+## Test the data conversion in the gymchecker database
+data = json.load(open(dbc.rel_path("data/sample_data.txt"),"r"))
+test_data = data["Items"]
+gc = dbc.load_gymchecker()
+gc.insert_data(test_data)
+gc.drop_table("gymchecker")
+
 ## run_test()
 # Tests the databaseObject() class on the 3 sets of data above. Works on a test
 # table, and drops it afterwards.
@@ -54,7 +62,7 @@ print("\nTesting Single Data:")
 test.insert_data(single_data)
 
 print("\nQuery results:")
-print(sorted(test.query("time='11:00' AND day='Friday'"),key=lambda x:x[0]))
+print(sorted(test.query("time='11' AND day='Friday'"),key=lambda x:x[0]))
 
 print("\nMax ID: {}".format(\
     test.x("SELECT MAX(ID) FROM {}".format(test.table))[0][0]))
