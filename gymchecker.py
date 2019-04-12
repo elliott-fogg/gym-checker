@@ -1,6 +1,6 @@
-from classes.shared_functions import *
-from classes.database_class import *
-from classes.gui_class import *
+from modules.shared_functions import *
+from modules.database_class import *
+from modules.gui_class import *
 
 def main():
     dirname = os.path.dirname(os.path.realpath(__file__))

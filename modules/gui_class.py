@@ -11,7 +11,7 @@ from matplotlib.figure import Figure
 import tkinter as tk
 from tkinter import messagebox as mbox
 
-from classes.shared_functions import *
+from modules.shared_functions import *
 
 ##### Additional Functions #####################################################
 
@@ -34,9 +34,8 @@ class gui(tk.Frame):
 
     ##### Standard Data ####################################################
 
-    open_hours = ((13,46),(13,46),(13,46),(13,46),(13,46),(16,46),(16,43)) # Can be exported to separate file?
     open_times = [list(t/2 for t in range(h[0],h[1])) for h in open_hours]
-    day_names = ("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday")
+
     day_abbr = ("Mon","Tue","Wed","Thu","Fri","Sat","Sun")
     day_index = 0
 
@@ -191,7 +190,7 @@ class gui(tk.Frame):
         hours = hours if (len(hours) == 2) else "0" + hours
         minutes = "30" if (time_pos % 1 == 0.5) else "00"
         self.label_values.configure(text="{} {}:{} = {}%".format(\
-            self.day_names[self.day_index], hours, minutes, value))
+            day_names[self.day_index], hours, minutes, value))
 
         # Show relative mouse position, for evaluating lines and such
         self.label_mousepos.configure(text="t={}; y={}%".format(\
@@ -285,7 +284,7 @@ class gui(tk.Frame):
         i = self.day_index
         self.ax.cla()
         self.bar_container = self.ax.bar(self.open_times[i],self.data[i],width=0.4)
-        self.ax.set_title("{} - Mean={}%".format(self.day_names[i], \
+        self.ax.set_title("{} - Mean={}%".format(day_names[i], \
             round(mean(self.data[i]),1)))
         self.ax.set_xlim([6,23.5])
         max_value = 5*(round(max(map(max,self.data))/5)+1)
@@ -366,7 +365,7 @@ class gui(tk.Frame):
 
                     com1 = "SELECT value FROM gymchecker WHERE date BETWEEN {} AND {} ".format(\
                         int(date(w_start)), int(date(w_end)))
-                    com2 = "AND time={} AND day='{}'".format(t, self.day_names[d])
+                    com2 = "AND time={} AND day='{}'".format(t, day_names[d])
                     results = self.gc.x(com1 + com2)
                     try:
                         total += results[0][0]

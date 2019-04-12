@@ -21,6 +21,12 @@ gc_params = (
 
 db_name = "gymchecker2.db"
 
+open_hours = ((13,46),(13,46),(13,46),(13,46),(13,46),(16,46),(16,43))
+day_names = ("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday")
+
+def get_day(seconds):
+    return datetime.datetime.fromtimestamp(seconds).weekday()
+
 ##### global variables #########################################################
 
 g_root_folder = ""

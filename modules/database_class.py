@@ -3,7 +3,7 @@
 
 import os, sqlite3, re, json, boto3, decimal, shutil
 from boto3.dynamodb.conditions import Attr
-from classes.shared_functions import *
+from modules.shared_functions import *
 
 ##### database class ###########################################################
 
