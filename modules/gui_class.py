@@ -1,5 +1,5 @@
 import os, re, datetime, sys, psutil
-from statistics import mean, median
+from statistics import mean, median, stdev
 import matplotlib.pyplot as plt
 
 from matplotlib.backends.backend_tkagg import (
@@ -12,6 +12,8 @@ import tkinter as tk
 from tkinter import messagebox as mbox
 
 from modules.shared_functions import *
+
+# TODO: Add in ability to change graph types
 
 ##### Additional Functions #####################################################
 
@@ -182,7 +184,8 @@ class gui(tk.Frame):
         # Get index of time position
         try:
             time_index = self.open_times[self.day_index].index(time_pos)
-            value = round(self.data[self.day_index][time_index],1)
+            # value = round(self.data[self.day_index][time_index],1)
+            value = round(self.errors[self.day_index][time_index],1)
         except ValueError:
             value = 0
 
@@ -280,21 +283,6 @@ class gui(tk.Frame):
         # Set positions
         self.grid()
 
-    def plot_figure(self):
-        i = self.day_index
-        self.ax.cla()
-        self.bar_container = self.ax.bar(self.open_times[i],self.data[i],width=0.4)
-        self.ax.set_title("{} - Mean={}%".format(day_names[i], \
-            round(mean(self.data[i]),1)))
-        self.ax.set_xlim([6,23.5])
-        max_value = 5*(round(max(map(max,self.data))/5)+1)
-        total_mean = mean(map(mean, self.data))
-        self.ax.set_ylim([0,max_value])
-        self.ax.xaxis.set_ticks(list(range(6,24)))
-        self.ax.axhline(y=mean(self.data[i]))
-        self.ax.axhline(y=total_mean, alpha=0.2, color="#ff0000")
-        self.canvas.draw()
-
     def waitscreen_start(self):
         self.waiting = True
         canvas = self.canvas.get_tk_widget()
@@ -312,6 +300,90 @@ class gui(tk.Frame):
         canvas = self.canvas.get_tk_widget()
         self.waitscreen.grid_forget()
         canvas.grid(row=0, sticky=tk.N+tk.W+tk.S+tk.E)
+
+    ##### Plotting #########################################################
+    def plot_figure(self):
+        self.figure_type = 4
+        if self.figure_type == 1:
+            self.plot_figure1()
+        elif self.figure_type == 2:
+            self.plot_figure2()
+        elif self.figure_type == 3:
+            self.plot_figure3()
+        elif self.figure_type == 4:
+            self.plot_figure4()
+
+    def plot_figure1(self):
+        # Original Plot
+        i = self.day_index
+        self.ax.cla()
+        self.barplot = self.ax.bar(self.open_times[i],self.data[i],width=0.4)
+        self.ax.set_title("{} - Mean={}%".format(day_names[i], \
+            round(mean(self.data[i]),1)))
+        self.ax.set_xlim([6,23.5])
+        max_value = 5*(round(max(map(max,self.data))/5)+1)
+        total_mean = mean(map(mean, self.data))
+        self.ax.set_ylim([0,max_value])
+        self.ax.xaxis.set_ticks(list(range(6,24)))
+        self.ax.axhline(y=mean(self.data[i]))
+        self.ax.axhline(y=total_mean, alpha=0.2, color="#ff0000")
+        self.canvas.draw()
+
+    def plot_figure2(self):
+        # Original Plot plus standard error bars
+        i = self.day_index
+        self.ax.cla()
+        self.barplot = self.ax.bar(self.open_times[i],self.data[i], \
+            yerr=self.errors[i],width=0.4)
+        self.ax.set_title("{} - Mean={}%".format(day_names[i], \
+            round(mean(self.data[i]),1)))
+        self.ax.set_xlim([6,23.5])
+        max_value = 5*(round(max(map(max,self.data))/5)+1)
+        total_mean = mean(map(mean, self.data))
+        self.ax.set_ylim([0,max_value])
+        self.ax.xaxis.set_ticks(list(range(6,24)))
+        self.ax.axhline(y=mean(self.data[i]))
+        self.ax.axhline(y=total_mean, alpha=0.2, color="#ff0000")
+        self.canvas.draw()
+
+    def plot_figure3(self):
+        # Envelope Line Plot
+        i = self.day_index
+        self.ax.cla()
+        self.lineplot = self.ax.plot(self.open_times[i],self.data[i],color="gray")
+        self.ax.set_title("{} - Mean={}%".format(day_names[i], \
+            round(mean(self.data[i]),1)))
+        self.ax.set_xlim([6,23.5])
+        bottom_line = [self.data[i][x] - self.errors[i][x] for x in range(len(self.open_times[i]))]
+        top_line = [self.data[i][x] + self.errors[i][x] for x in range(len(self.open_times[i]))]
+        self.ax.fill_between(self.open_times[i],bottom_line,\
+            top_line, color="gray",alpha=0.2)
+        max_value = 5*(round(max(map(max,self.data))/5)+1)
+        total_mean = mean(map(mean, self.data))
+        self.ax.set_ylim([0,max_value])
+        self.ax.xaxis.set_ticks(list(range(6,24)))
+        self.ax.axhline(y=mean(self.data[i]))
+        self.ax.axhline(y=total_mean, alpha=0.2, color="#ff0000")
+        self.canvas.draw()
+
+    def plot_figure4(self):
+        # Original plot with custom error bars
+        i = self.day_index
+        self.ax.cla()
+        self.barplot = self.ax.bar(self.open_times[i],self.data[i],width=0.4)
+        elevation = [self.data[i][x] - self.errors[i][x]/2 for x in range(len(self.data[i]))]
+        self.errplot = self.ax.bar(self.open_times[i],self.errors[i],\
+            bottom=elevation,width=0.4,alpha=0.3,color="red")
+        self.ax.set_title("{} - Mean={}%".format(day_names[i], \
+            round(mean(self.data[i]),1)))
+        self.ax.set_xlim([6,23.5])
+        max_value = 5*(round(max(map(max,self.data))/5)+1)
+        total_mean = mean(map(mean, self.data))
+        self.ax.set_ylim([0,100])
+        self.ax.xaxis.set_ticks(list(range(6,24)))
+        self.ax.axhline(y=mean(self.data[i]))
+        self.ax.axhline(y=total_mean, alpha=0.2, color="green")
+        self.canvas.draw()
 
     ##### Calculation Functions ############################################
 
@@ -340,6 +412,7 @@ class gui(tk.Frame):
             if os.path.isfile(loadfile):
                 with open(loadfile, "r") as f:
                     weeks_str = f.read().split(",")
+                break
         try:
             self.week_switches = [int(i) for i in weeks_str]
             if len(self.week_switches) < len(week_starts):
@@ -351,12 +424,13 @@ class gui(tk.Frame):
 
     def calculate_data(self):
         data = []
+        errors = []
 
         for d in range(7):
             day_values = []
+            day_errors = []
             for t in self.open_times[d]:
-                total = 0
-                r_count = 0
+                time_values = []
                 for i in range(len(self.week_starts)):
                     if self.week_switches[i] == 0:
                         continue
@@ -367,17 +441,20 @@ class gui(tk.Frame):
                         int(date(w_start)), int(date(w_end)))
                     com2 = "AND time={} AND day='{}'".format(t, day_names[d])
                     results = self.gc.x(com1 + com2)
-                    try:
-                        total += results[0][0]
-                        r_count += 1
-                    except:
-                        # print("Error for: {}".format(com1+com2))
-                        pass
-                total /= max(1,r_count)
+                    if len(results) > 0:
+                        time_values.append(results[0][0])
+                    # else:
+                    #     print("ERROR: {}; {}{}".format(results,com1,com2))
+                total = mean(time_values)
+                sd = stdev(time_values)
                 day_values.append(total)
+                day_errors.append(sd)
 
             data.append(day_values)
+            errors.append(day_errors)
         self.data = data
+        self.errors = errors
+
 
 
     ##### init function ####################################################
