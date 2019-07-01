@@ -446,7 +446,10 @@ class gui(tk.Frame):
                     # else:
                     #     print("ERROR: {}; {}{}".format(results,com1,com2))
                 total = mean(time_values)
-                sd = stdev(time_values)
+                if len(time_values) > 1:
+                    sd = stdev(time_values)
+                else:
+                    sd = 0
                 day_values.append(total)
                 day_errors.append(sd)
 
